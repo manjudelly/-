@@ -8,7 +8,7 @@ import cv2
 device = "cpu"
 
 # ------------------
-# Aesthetic Model (512차원용)
+# Aesthetic Model (512 input)
 # ------------------
 class AestheticModel(torch.nn.Module):
     def __init__(self):
@@ -27,16 +27,12 @@ class AestheticModel(torch.nn.Module):
     def forward(self, x):
         return self.layers(x)
 
-# ------------------
-# 모델 로딩
-# ------------------
 @st.cache_resource
 def load_models():
     model, preprocess = clip.load("ViT-B/32", device=device)
 
     aesthetic_model = AestheticModel().to(device)
 
-    # weight 로드 (shape 안 맞으면 에러 날 수 있음)
     try:
         state_dict = torch.load(
             "ava+logos-l14-linearMSE.pth",
@@ -53,7 +49,7 @@ def load_models():
 model, preprocess, aesthetic_model = load_models()
 
 # ------------------
-# 분석 함수들
+# 분석 함수
 # ------------------
 def laplacian_variance(image_np):
     gray = cv2.cvtColor(image_np, cv2.COLOR_RGB2GRAY)
@@ -61,7 +57,6 @@ def laplacian_variance(image_np):
 
 def sharpness_score(image_np):
     val = laplacian_variance(image_np)
-
     if val < 40:
         return -2
     elif val > 150:
@@ -121,15 +116,20 @@ def aesthetic_score(image):
 # ------------------
 # UI
 # ------------------
-st.title("📸 Photo Selector - Cloud Version")
+st.title("📸 Personal Photo Selector (Cloud Safe)")
 
 uploaded_files = st.file_uploader(
-    "이미지 업로드",
+    "이미지 업로드 (최대 8장)",
     type=["jpg", "jpeg", "png"],
     accept_multiple_files=True
 )
 
 if uploaded_files:
+
+    if len(uploaded_files) > 8:
+        st.warning("⚠ 최대 8장까지만 업로드 가능합니다.")
+        st.stop()
+
     results = []
 
     with st.spinner("🔍 분석 중..."):
@@ -158,16 +158,7 @@ if uploaded_files:
 
     results = sorted(results, key=lambda x: x["final"], reverse=True)
 
-    st.subheader("🏆 Top 3")
-    cols = st.columns(min(3, len(results)))
-
-    for col, item in zip(cols, results[:3]):
-        col.image(item["image"], use_column_width=True)
-        col.markdown(f"### ⭐ {item['final']}")
-
-    st.divider()
-
-    st.subheader("📊 전체 결과")
+    st.subheader("📊 점수 결과 (높은 순)")
 
     for item in results:
         st.image(item["image"], use_column_width=True)
