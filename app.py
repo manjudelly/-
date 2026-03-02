@@ -141,27 +141,19 @@ if uploaded_files:
         st.markdown(f"- 밝기 {'+' if bright > 0 else ''}{bright}%")
         st.markdown(f"- 채도 {'+' if sat > 0 else ''}{sat}%")
 
-        # ✂ 크롭 버튼
-        if st.button("✂ 크롭 가이드 보기", key="crop_"+uploaded_file.name):
+        # ------------------
+        # 수평 토글 버튼
+        # ------------------
 
-            mode = st.radio(
-                "크롭 모드 선택",
-                ["중앙 안정형", "3분할 감성형"],
-                key="radio_"+uploaded_file.name
-            )
+        horizon_key = "horizon_" + uploaded_file.name
 
-            if mode == "중앙 안정형":
-                box = central_crop_box(image_np)
-            else:
-                box = rule_of_thirds_crop_box(image_np)
+        if horizon_key not in st.session_state:
+            st.session_state[horizon_key] = False
 
-            boxed_image = draw_box(image_np, box)
-            st.image(boxed_image, use_column_width=True)
-            st.caption("초록 박스를 기준으로 크롭을 고려해보세요.")
+        if st.button("📐 수평 가이드 토글", key="btn_"+uploaded_file.name):
+            st.session_state[horizon_key] = not st.session_state[horizon_key]
 
-        # 📐 수평 버튼
-        if st.button("📐 수평 가이드 보기", key="horizon_"+uploaded_file.name):
-
+        if st.session_state[horizon_key]:
             horizon_img, angle = draw_horizon_line(image_np)
 
             if horizon_img is None:
