@@ -57,12 +57,17 @@ def rule_of_thirds_crop_box(image_np):
     return x1, y1, x2, y2
 
 # ------------------
-# 수평 감지
+# 수평 감지 (평균 기반)
 # ------------------
 
 def detect_horizon_line(image_np):
     h, w = image_np.shape[:2]
-    small = cv2.resize(image_np, (800, int(h * 800 / w)))
+
+    # 계산용으로 축소
+    scale_w = 800
+    scale_h = int(h * scale_w / w)
+    small = cv2.resize(image_np, (scale_w, scale_h))
+
     gray = cv2.cvtColor(small, cv2.COLOR_RGB2GRAY)
     edges = cv2.Canny(gray, 50, 150)
 
@@ -76,19 +81,30 @@ def detect_horizon_line(image_np):
     )
 
     if lines is None:
-        return None, None
+        return None, None, small
 
-    best_line = None
-    smallest_angle = 90
+    valid_angles = []
+    valid_lines = []
 
     for line in lines:
         x1, y1, x2, y2 = line[0]
         angle = np.degrees(np.arctan2(y2 - y1, x2 - x1))
-        if abs(angle) < abs(smallest_angle):
-            smallest_angle = angle
-            best_line = (x1, y1, x2, y2)
 
-    return best_line, smallest_angle
+        # 거의 수평인 선만 사용
+        if abs(angle) < 15:
+            valid_angles.append(angle)
+            valid_lines.append((x1, y1, x2, y2))
+
+    if len(valid_angles) == 0:
+        return None, None, small
+
+    mean_angle = np.mean(valid_angles)
+
+    # 평균 각도에 가장 가까운 선 선택
+    closest_idx = np.argmin(np.abs(np.array(valid_angles) - mean_angle))
+    best_line = valid_lines[closest_idx]
+
+    return best_line, mean_angle, small
 
 # ------------------
 # UI
@@ -113,6 +129,7 @@ if uploaded_files:
 
         st.subheader(uploaded_file.name)
 
+        # 밝기 / 채도 제안
         bright = exposure_percent(image_np)
         sat = saturation_percent(image_np)
 
@@ -130,11 +147,15 @@ if uploaded_files:
             st.session_state[horizon_key] = False
 
         # 버튼
-        if st.button("✂ 크롭 토글", key="btn_crop_"+uploaded_file.name):
-            st.session_state[crop_key] = not st.session_state[crop_key]
+        col1, col2 = st.columns(2)
 
-        if st.button("📐 수평 토글", key="btn_horizon_"+uploaded_file.name):
-            st.session_state[horizon_key] = not st.session_state[horizon_key]
+        with col1:
+            if st.button("✂ 크롭 토글", key="btn_crop_"+uploaded_file.name):
+                st.session_state[crop_key] = not st.session_state[crop_key]
+
+        with col2:
+            if st.button("📐 수평 토글", key="btn_horizon_"+uploaded_file.name):
+                st.session_state[horizon_key] = not st.session_state[horizon_key]
 
         # ---- 통합 표시 이미지 생성 ----
         display_image = image_np.copy()
@@ -154,24 +175,38 @@ if uploaded_files:
                 box = rule_of_thirds_crop_box(display_image)
 
             x1, y1, x2, y2 = box
-            cv2.rectangle(display_image, (x1, y1), (x2, y2), (0, 255, 0), 3)
+            cv2.rectangle(display_image, (x1, y1), (x2, y2), (0, 255, 0), 4)
 
         # 수평 적용
         if st.session_state[horizon_key]:
-            line, angle = detect_horizon_line(display_image)
+
+            line, angle, small = detect_horizon_line(image_np)
 
             if line is not None:
                 x1, y1, x2, y2 = line
-                cv2.line(display_image, (x1, y1), (x2, y2), (0, 0, 255), 3)
 
-                if abs(angle) >= 0.01:
+                # 원본 크기에 맞게 좌표 비율 보정
+                h, w = image_np.shape[:2]
+                scale_w = 800
+                scale_h = int(h * scale_w / w)
+
+                ratio_x = w / scale_w
+                ratio_y = h / scale_h
+
+                x1 = int(x1 * ratio_x)
+                x2 = int(x2 * ratio_x)
+                y1 = int(y1 * ratio_y)
+                y2 = int(y2 * ratio_y)
+
+                cv2.line(display_image, (x1, y1), (x2, y2), (0, 0, 255), 4)
+
+                if abs(angle) >= 0.1:
                     direction = "시계 방향" if angle < 0 else "반시계 방향"
-                    st.warning(f"{direction}으로 약 {abs(round(angle,1))}° 회전 추천")
+                    st.warning(f"{direction}으로 약 {abs(round(angle,2))}° 회전 추천")
                 else:
-                    st.success("수평이 잘 맞습니다 (±0.5° 이내)")
+                    st.success("거의 완벽한 수평입니다 (±0.1° 이내)")
             else:
                 st.info("수평 기준선을 찾기 어렵습니다.")
 
-        # 최종 출력
         st.image(display_image, use_column_width=True)
         st.divider()
