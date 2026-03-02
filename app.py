@@ -44,7 +44,7 @@ def load_models():
 model, preprocess, aesthetic_model = load_models()
 
 # ------------------
-# 점수 계산 함수
+# 점수 계산
 # ------------------
 def aesthetic_score(image):
     image_input = preprocess(image).unsqueeze(0).to(device)
@@ -100,9 +100,6 @@ def rule_of_thirds_crop_box(image_np):
     target_x = w // 3
     target_y = h // 3
 
-    shift_x = cx - target_x
-    shift_y = cy - target_y
-
     box_w = int(w * 0.6)
     box_h = int(h * 0.6)
 
@@ -137,6 +134,7 @@ if uploaded_files:
         st.stop()
 
     for uploaded_file in uploaded_files:
+
         image = Image.open(uploaded_file)
         image_np = np.array(image)
 
@@ -147,22 +145,27 @@ if uploaded_files:
         st.subheader(uploaded_file.name)
         st.image(image, use_column_width=True)
 
-        st.markdown("### 💡 추천 보정")
-        st.markdown(f"- 밝기 {'+' if bright>0 else ''}{bright}%")
-        st.markdown(f"- 채도 {'+' if sat>0 else ''}{sat}%")
+        st.markdown("### 💡 추천 보정 가이드")
+        st.markdown(f"- 밝기 {'+' if bright > 0 else ''}{bright}%")
+        st.markdown(f"- 채도 {'+' if sat > 0 else ''}{sat}%")
+        st.markdown(f"- Aesthetic 점수: {round(aesth,2)}")
 
-        mode = st.radio(
-            "크롭 모드 선택",
-            ["중앙 안정형", "3분할 감성형"],
-            key=uploaded_file.name
-        )
+        # ✂ 크롭 가이드는 버튼 눌렀을 때만
+        if st.button("✂ 크롭 가이드 보기", key="crop_"+uploaded_file.name):
 
-        if mode == "중앙 안정형":
-            box = central_crop_box(image_np)
-        else:
-            box = rule_of_thirds_crop_box(image_np)
+            mode = st.radio(
+                "크롭 모드 선택",
+                ["중앙 안정형", "3분할 감성형"],
+                key="radio_"+uploaded_file.name
+            )
 
-        boxed_image = draw_box(image_np, box)
-        st.image(boxed_image, use_column_width=True)
+            if mode == "중앙 안정형":
+                box = central_crop_box(image_np)
+            else:
+                box = rule_of_thirds_crop_box(image_np)
+
+            boxed_image = draw_box(image_np, box)
+            st.image(boxed_image, use_column_width=True)
+            st.caption("초록 박스를 기준으로 크롭을 고려해보세요.")
 
         st.divider()
