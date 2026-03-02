@@ -164,7 +164,7 @@ if uploaded_files:
                 x1, y1, x2, y2 = line
                 cv2.line(display_image, (x1, y1), (x2, y2), (0, 0, 255), 3)
 
-                if abs(angle) >= 0.5:
+                if abs(angle) >= 0.01:
                     direction = "시계 방향" if angle < 0 else "반시계 방향"
                     st.warning(f"{direction}으로 약 {abs(round(angle,1))}° 회전 추천")
                 else:
