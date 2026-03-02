@@ -71,12 +71,12 @@ def rotate_image(image, angle):
     return cv2.warpAffine(image, M, (w, h))
 
 def apply_brightness(image, percent):
-    value = percent * 2.55
+    value = percent * 1.2
     return cv2.convertScaleAbs(image, alpha=1, beta=value)
 
 def apply_saturation(image, percent):
     hsv = cv2.cvtColor(image, cv2.COLOR_RGB2HSV).astype(np.float32)
-    hsv[:,:,1] *= (1 + percent/100)
+    hsv[:,:,1] *= (1 + percent/100*0.5)
     hsv[:,:,1] = np.clip(hsv[:,:,1], 0, 255)
     return cv2.cvtColor(hsv.astype(np.uint8), cv2.COLOR_HSV2RGB)
 
