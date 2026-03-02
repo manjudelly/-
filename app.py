@@ -38,7 +38,6 @@ def central_crop_box(image_np):
     cx, cy = get_subject_center(image_np)
     box_w = int(w * 0.6)
     box_h = int(h * 0.6)
-
     x1 = max(cx - box_w // 2, 0)
     y1 = max(cy - box_h // 2, 0)
     x2 = min(x1 + box_w, w)
@@ -51,7 +50,6 @@ def rule_of_thirds_crop_box(image_np):
     target_y = h // 3
     box_w = int(w * 0.6)
     box_h = int(h * 0.6)
-
     x1 = max(target_x - box_w // 2, 0)
     y1 = max(target_y - box_h // 2, 0)
     x2 = min(x1 + box_w, w)
@@ -92,7 +90,6 @@ def detect_horizon_line(image_np):
     for line in lines:
         x1, y1, x2, y2 = line[0]
         angle = np.degrees(np.arctan2(y2 - y1, x2 - x1))
-
         if abs(angle) < abs(smallest_angle):
             smallest_angle = angle
             best_line = (x1, y1, x2, y2)
@@ -101,10 +98,8 @@ def detect_horizon_line(image_np):
 
 def draw_horizon_line(image_np):
     line, angle, small = detect_horizon_line(image_np)
-
     if line is None:
         return None, None
-
     x1, y1, x2, y2 = line
     cv2.line(small, (x1, y1), (x2, y2), (0, 0, 255), 3)
     return small, angle
@@ -133,7 +128,6 @@ if uploaded_files:
         st.subheader(uploaded_file.name)
         st.image(image, use_column_width=True)
 
-        # 밝기 / 채도 제안
         bright = exposure_percent(image_np)
         sat = saturation_percent(image_np)
 
@@ -142,15 +136,41 @@ if uploaded_files:
         st.markdown(f"- 채도 {'+' if sat > 0 else ''}{sat}%")
 
         # ------------------
-        # 수평 토글 버튼
+        # 크롭 토글
+        # ------------------
+
+        crop_key = "crop_" + uploaded_file.name
+        if crop_key not in st.session_state:
+            st.session_state[crop_key] = False
+
+        if st.button("✂ 크롭 가이드 토글", key="btn_crop_"+uploaded_file.name):
+            st.session_state[crop_key] = not st.session_state[crop_key]
+
+        if st.session_state[crop_key]:
+
+            mode = st.radio(
+                "크롭 모드 선택",
+                ["중앙 안정형", "3분할 감성형"],
+                key="radio_"+uploaded_file.name
+            )
+
+            if mode == "중앙 안정형":
+                box = central_crop_box(image_np)
+            else:
+                box = rule_of_thirds_crop_box(image_np)
+
+            boxed_image = draw_box(image_np, box)
+            st.image(boxed_image, use_column_width=True)
+
+        # ------------------
+        # 수평 토글
         # ------------------
 
         horizon_key = "horizon_" + uploaded_file.name
-
         if horizon_key not in st.session_state:
             st.session_state[horizon_key] = False
 
-        if st.button("📐 수평 가이드 토글", key="btn_"+uploaded_file.name):
+        if st.button("📐 수평 가이드 토글", key="btn_horizon_"+uploaded_file.name):
             st.session_state[horizon_key] = not st.session_state[horizon_key]
 
         if st.session_state[horizon_key]:
