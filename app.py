@@ -131,7 +131,7 @@ if uploaded_files:
         bright = exposure_percent(image_np)
         sat = saturation_percent(image_np)
 
-        st.markdown("### 💡 편집 제안")
+        st.markdown("### 편집 제안")
         st.markdown(f"- 밝기 {'+' if bright > 0 else ''}{bright}%")
         st.markdown(f"- 채도 {'+' if sat > 0 else ''}{sat}%")
 
@@ -143,13 +143,13 @@ if uploaded_files:
         if crop_key not in st.session_state:
             st.session_state[crop_key] = False
 
-        if st.button("✂ 크롭 가이드 토글", key="btn_crop_"+uploaded_file.name):
+        if st.button("크롭 가이드", key="btn_crop_"+uploaded_file.name):
             st.session_state[crop_key] = not st.session_state[crop_key]
 
         if st.session_state[crop_key]:
 
             mode = st.radio(
-                "크롭 모드 선택",
+                "크롭 모드",
                 ["중앙 안정형", "3분할 감성형"],
                 key="radio_"+uploaded_file.name
             )
@@ -170,7 +170,7 @@ if uploaded_files:
         if horizon_key not in st.session_state:
             st.session_state[horizon_key] = False
 
-        if st.button("📐 수평 가이드 토글", key="btn_horizon_"+uploaded_file.name):
+        if st.button("수평 가이드", key="btn_horizon_"+uploaded_file.name):
             st.session_state[horizon_key] = not st.session_state[horizon_key]
 
         if st.session_state[horizon_key]:
