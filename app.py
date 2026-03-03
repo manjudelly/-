@@ -3,136 +3,137 @@ from PIL import Image
 import numpy as np
 import cv2
 
-st.title("📸 Horizon & Crop Guide")
+st.title("📸 Composition Analysis Engine")
 
-# ------------------
-# 수평 감지 (평균 기반)
-# ------------------
-
-def detect_horizon_angle(image_np):
-    h, w = image_np.shape[:2]
-
-    scale_w = 800
-    scale_h = int(h * scale_w / w)
-    small = cv2.resize(image_np, (scale_w, scale_h))
-
-    gray = cv2.cvtColor(small, cv2.COLOR_RGB2GRAY)
+# ---------------------------
+# 1️⃣ 선 방향 분석
+# ---------------------------
+def analyze_line_directions(image_np):
+    gray = cv2.cvtColor(image_np, cv2.COLOR_RGB2GRAY)
     edges = cv2.Canny(gray, 50, 150)
 
     lines = cv2.HoughLinesP(
         edges,
         1,
-        np.pi/180,
-        threshold=100,
+        np.pi / 180,
+        threshold=120,
         minLineLength=100,
         maxLineGap=10
     )
 
     if lines is None:
-        return None
+        return 0, 0, 0
 
-    valid_angles = []
+    horizontal = 0
+    vertical = 0
+    diagonal = 0
 
     for line in lines:
         x1, y1, x2, y2 = line[0]
-        angle = np.degrees(np.arctan2(y2 - y1, x2 - x1))
+        angle = abs(np.degrees(np.arctan2(y2 - y1, x2 - x1)))
 
-        if abs(angle) < 15:
-            valid_angles.append(angle)
+        if angle < 10:
+            horizontal += 1
+        elif 80 < angle < 100:
+            vertical += 1
+        else:
+            diagonal += 1
 
-    if len(valid_angles) == 0:
-        return None
+    total = horizontal + vertical + diagonal
+    if total == 0:
+        return 0, 0, 0
 
-    return np.mean(valid_angles)
-
-# ------------------
-# 회전 적용 (부호 안정화)
-# ------------------
-
-def rotate_image(image, angle):
-    if angle is None:
-        return image
-
-    h, w = image.shape[:2]
-    center = (w//2, h//2)
-
-    # 🔥 부호 반전 제거 (기존 -angle → angle)
-    M = cv2.getRotationMatrix2D(center, angle, 1.0)
-
-    return cv2.warpAffine(
-        image,
-        M,
-        (w, h),
-        borderMode=cv2.BORDER_REPLICATE
+    return (
+        round(horizontal / total, 2),
+        round(vertical / total, 2),
+        round(diagonal / total, 2),
     )
 
-# ------------------
-# 중앙 크롭
-# ------------------
+# ---------------------------
+# 2️⃣ 시각적 무게 중심
+# ---------------------------
+def analyze_visual_weight(image_np):
+    gray = cv2.cvtColor(image_np, cv2.COLOR_RGB2GRAY)
+    edges = cv2.Canny(gray, 50, 150)
 
-def central_crop(image):
-    h, w = image.shape[:2]
-    box_w = int(w * 0.85)
-    box_h = int(h * 0.85)
+    h, w = edges.shape
+    ys, xs = np.nonzero(edges)
 
-    x1 = (w - box_w) // 2
-    y1 = (h - box_h) // 2
+    if len(xs) == 0:
+        return w // 2, h // 2
 
-    return image[y1:y1+box_h, x1:x1+box_w]
+    center_x = int(np.mean(xs))
+    center_y = int(np.mean(ys))
 
-# ------------------
+    return center_x, center_y
+
+# ---------------------------
+# 3️⃣ 좌우 대칭 점수
+# ---------------------------
+def analyze_symmetry(image_np):
+    gray = cv2.cvtColor(image_np, cv2.COLOR_RGB2GRAY)
+    flipped = cv2.flip(gray, 1)
+
+    diff = np.mean(np.abs(gray - flipped))
+    symmetry_score = 1 - (diff / 255)
+
+    return round(symmetry_score, 2)
+
+# ---------------------------
+# 4️⃣ 상/하 에지 밀도
+# ---------------------------
+def analyze_vertical_balance(image_np):
+    gray = cv2.cvtColor(image_np, cv2.COLOR_RGB2GRAY)
+    edges = cv2.Canny(gray, 50, 150)
+
+    h = edges.shape[0]
+    top_density = np.sum(edges[:h//2, :])
+    bottom_density = np.sum(edges[h//2:, :])
+
+    total = top_density + bottom_density
+    if total == 0:
+        return 0.5, 0.5
+
+    return (
+        round(top_density / total, 2),
+        round(bottom_density / total, 2),
+    )
+
+# ---------------------------
 # UI
-# ------------------
-
-uploaded_files = st.file_uploader(
-    "이미지 업로드 (최대 8장)",
-    type=["jpg","jpeg","png"],
-    accept_multiple_files=True
+# ---------------------------
+uploaded_file = st.file_uploader(
+    "이미지 업로드",
+    type=["jpg", "jpeg", "png"]
 )
 
-if uploaded_files:
+if uploaded_file:
 
-    if len(uploaded_files) > 8:
-        st.warning("⚠ 최대 8장까지만 업로드 가능합니다.")
-        st.stop()
+    image = Image.open(uploaded_file).convert("RGB")
+    image_np = np.array(image)
 
-    for uploaded_file in uploaded_files:
+    st.image(image_np, use_column_width=True)
 
-        image = Image.open(uploaded_file).convert("RGB")
-        image_np = np.array(image)
+    h_ratio, v_ratio, d_ratio = analyze_line_directions(image_np)
+    cx, cy = analyze_visual_weight(image_np)
+    symmetry = analyze_symmetry(image_np)
+    top_ratio, bottom_ratio = analyze_vertical_balance(image_np)
 
-        st.subheader(uploaded_file.name)
+    st.markdown("## 📊 분석 결과")
 
-        angle = detect_horizon_angle(image_np)
+    st.write(f"수평 선 비율: {h_ratio}")
+    st.write(f"수직 선 비율: {v_ratio}")
+    st.write(f"대각선 선 비율: {d_ratio}")
 
-        if angle is not None:
-            st.markdown(f"### 📐 감지된 기울기: {round(angle,2)}°")
-        else:
-            st.markdown("### 📐 수평선 감지 실패")
+    st.write(f"시각적 무게 중심: ({cx}, {cy})")
 
-        st.markdown("### 🎛 적용 선택")
+    st.write(f"좌우 대칭 점수 (1에 가까울수록 대칭): {symmetry}")
 
-        apply_rotate = st.checkbox("📐 수평 적용", key="rot_"+uploaded_file.name)
-        apply_crop = st.checkbox("✂ 중앙 크롭 적용", key="crop_"+uploaded_file.name)
+    st.write(f"상단 에지 비율: {top_ratio}")
+    st.write(f"하단 에지 비율: {bottom_ratio}")
 
-        edited = image_np.copy()
-
-        # 회전 먼저
-        if apply_rotate:
-            edited = rotate_image(edited, angle)
-
-        # 크롭 나중
-        if apply_crop:
-            edited = central_crop(edited)
-
-        col1, col2 = st.columns(2)
-
-        with col1:
-            st.markdown("#### 원본")
-            st.image(image_np, use_column_width=True)
-
-        with col2:
-            st.markdown("#### 미리보기")
-            st.image(edited, use_column_width=True)
-
-        st.divider()
+    # 무게 중심 시각화
+    vis = image_np.copy()
+    cv2.circle(vis, (cx, cy), 20, (255, 0, 0), 4)
+    st.markdown("### 🔵 시각적 무게 중심 표시")
+    st.image(vis, use_column_width=True)
