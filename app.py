@@ -112,13 +112,28 @@ if uploaded_file:
     image = Image.open(uploaded_file).convert("RGB")
     image_np = np.array(image)
 
-    st.image(image_np, use_column_width=True)
-
+    # 분석 수행
     h_ratio, v_ratio, d_ratio = analyze_line_directions(image_np)
     cx, cy = analyze_visual_weight(image_np)
     symmetry = analyze_symmetry(image_np)
     top_ratio, bottom_ratio = analyze_vertical_balance(image_np)
 
+    # 무게 중심 표시 이미지
+    vis = image_np.copy()
+    cv2.circle(vis, (cx, cy), 25, (255, 0, 0), 5)
+
+    # 🔥 좌우 비교 레이아웃
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.markdown("### 📷 원본")
+        st.image(image_np, use_column_width=True)
+
+    with col2:
+        st.markdown("### 🔵 분석 표시")
+        st.image(vis, use_column_width=True)
+
+    st.markdown("---")
     st.markdown("## 📊 분석 결과")
 
     st.write(f"수평 선 비율: {h_ratio}")
@@ -131,9 +146,3 @@ if uploaded_file:
 
     st.write(f"상단 에지 비율: {top_ratio}")
     st.write(f"하단 에지 비율: {bottom_ratio}")
-
-    # 무게 중심 시각화
-    vis = image_np.copy()
-    cv2.circle(vis, (cx, cy), 20, (255, 0, 0), 4)
-    st.markdown("### 🔵 시각적 무게 중심 표시")
-    st.image(vis, use_column_width=True)
