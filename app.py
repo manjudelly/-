@@ -96,7 +96,6 @@ def evaluate_crop(image_np,dominant):
     cx,cy=analyze_visual_weight(image_np)
 
     score=100
-
     strengths=[]
     weaknesses=[]
 
@@ -124,7 +123,7 @@ def evaluate_crop(image_np,dominant):
 
 
 # -----------------------------
-# 이미지 다운로드 변환
+# 다운로드용
 # -----------------------------
 def image_to_bytes(img):
 
@@ -138,7 +137,7 @@ def image_to_bytes(img):
 
 
 # -----------------------------
-# 업로드
+# 사진 업로드
 # -----------------------------
 uploaded_files = st.file_uploader(
     "사진 업로드",
@@ -148,7 +147,7 @@ uploaded_files = st.file_uploader(
 
 if uploaded_files:
 
-    st.write("총 사진 수:", len(uploaded_files))
+    st.write("사진 개수:",len(uploaded_files))
 
     # -----------------------------
     # 사진 슬라이드
@@ -238,23 +237,27 @@ if uploaded_files:
     candidates.sort(key=lambda x:x[1],reverse=True)
 
     # -----------------------------
-    # 후보 표시
+    # 결과 슬라이드 (인스타 방식)
     # -----------------------------
-    cols = st.columns(3)
+    tabs = st.tabs(["후보1","후보2","후보3"])
 
-    for i,(img,score,strengths,weaknesses) in enumerate(candidates):
+    for i,tab in enumerate(tabs):
 
-        with cols[i]:
+        with tab:
+
+            img,score,strengths,weaknesses=candidates[i]
 
             st.image(img,use_column_width=True)
 
             st.write("⭐",score,"점")
 
             if strengths:
+                st.write("강점")
                 for s in strengths:
                     st.write("•",s)
 
             if weaknesses:
+                st.write("보완점")
                 for w_ in weaknesses:
                     st.write("•",w_)
 
