@@ -6,7 +6,7 @@ import io
 
 st.set_page_config(layout="wide")
 
-st.title("📸 Composition Editing Tool")
+st.title("📸 Photo Composition Editor")
 
 # -----------------------------
 # 선 방향 분석
@@ -68,7 +68,7 @@ def analyze_visual_weight(image_np):
 
 
 # -----------------------------
-# 크롭 함수
+# 크롭
 # -----------------------------
 def crop_around_point(image,center_x,center_y,ratio):
 
@@ -96,6 +96,7 @@ def evaluate_crop(image_np,dominant):
     cx,cy=analyze_visual_weight(image_np)
 
     score=100
+
     strengths=[]
     weaknesses=[]
 
@@ -108,6 +109,7 @@ def evaluate_crop(image_np,dominant):
         weaknesses.append("중심이 약간 치우쳐 있습니다.")
 
     if dominant=="diagonal":
+
         _,_,d=analyze_line_directions(image_np)
 
         if d<0.4:
@@ -122,7 +124,7 @@ def evaluate_crop(image_np,dominant):
 
 
 # -----------------------------
-# 다운로드용 변환
+# 이미지 다운로드 변환
 # -----------------------------
 def image_to_bytes(img):
 
@@ -138,113 +140,128 @@ def image_to_bytes(img):
 # -----------------------------
 # 업로드
 # -----------------------------
-uploaded_files=st.file_uploader(
-    "사진 업로드 (여러 장 가능)",
+uploaded_files = st.file_uploader(
+    "사진 업로드",
     type=["jpg","jpeg","png"],
     accept_multiple_files=True
 )
 
 if uploaded_files:
 
-    mode=st.radio(
-        "구도 모드 선택",
-        ["🔥 구도 강화","⚖ 구도 안정화","🎨 구도 재구성"],
-        key="mode_select"
+    st.write("총 사진 수:", len(uploaded_files))
+
+    # -----------------------------
+    # 사진 슬라이드
+    # -----------------------------
+    index = st.slider(
+        "사진 선택",
+        0,
+        len(uploaded_files)-1,
+        0
     )
 
-    for file_index,file in enumerate(uploaded_files):
+    file = uploaded_files[index]
 
-        st.divider()
+    image = Image.open(file).convert("RGB")
+    image_np = np.array(image)
 
-        st.subheader(file.name)
+    st.image(image_np,use_column_width=True)
 
-        image=Image.open(file).convert("RGB")
-        image_np=np.array(image)
+    h,w = image_np.shape[:2]
 
-        h,w=image_np.shape[:2]
+    # -----------------------------
+    # 분석
+    # -----------------------------
+    h_ratio,v_ratio,d_ratio = analyze_line_directions(image_np)
 
-        h_ratio,v_ratio,d_ratio=analyze_line_directions(image_np)
+    cx,cy = analyze_visual_weight(image_np)
 
-        cx,cy=analyze_visual_weight(image_np)
+    if d_ratio>0.45:
+        dominant="diagonal"
+    elif h_ratio>0.45:
+        dominant="horizontal"
+    elif v_ratio>0.45:
+        dominant="vertical"
+    else:
+        dominant="mixed"
 
-        if d_ratio>0.45:
-            dominant="diagonal"
-        elif h_ratio>0.45:
-            dominant="horizontal"
-        elif v_ratio>0.45:
-            dominant="vertical"
-        else:
-            dominant="mixed"
+    st.write("감지된 구도:",dominant)
 
-        st.write("감지된 구도:",dominant)
+    # -----------------------------
+    # 모드 선택
+    # -----------------------------
+    mode = st.radio(
+        "구도 모드",
+        ["🔥 구도 강화","⚖ 구도 안정화","🎨 구도 재구성"]
+    )
 
-        # -----------------
-        # 후보 생성
-        # -----------------
+    # -----------------------------
+    # 후보 생성
+    # -----------------------------
+    if mode=="🔥 구도 강화":
 
-        if mode=="🔥 구도 강화":
+        ratios=[0.85,0.75,0.65]
+        targets=[(cx,cy)]*3
 
-            ratios=[0.85,0.75,0.65]
-            targets=[(cx,cy)]*3
+    elif mode=="⚖ 구도 안정화":
 
-        elif mode=="⚖ 구도 안정화":
+        ratios=[0.9,0.8,0.7]
+        targets=[(w//2,h//2)]*3
 
-            ratios=[0.9,0.8,0.7]
-            targets=[(w//2,h//2)]*3
+    else:
 
-        else:
+        ratios=[0.75,0.7,0.65]
+        targets=[
+            (int(w/3),int(h/3)),
+            (int(w*2/3),int(h/3)),
+            (int(w/3),int(h*2/3))
+        ]
 
-            ratios=[0.75,0.7,0.65]
-            targets=[
-                (int(w/3),int(h/3)),
-                (int(w*2/3),int(h/3)),
-                (int(w/3),int(h*2/3))
-            ]
+    candidates=[]
 
-        candidates=[]
+    for i in range(3):
 
-        for i in range(3):
+        cropped=crop_around_point(
+            image_np,
+            targets[i][0],
+            targets[i][1],
+            ratios[i]
+        )
 
-            cropped=crop_around_point(
-                image_np,
-                targets[i][0],
-                targets[i][1],
-                ratios[i]
+        score,strengths,weaknesses=evaluate_crop(
+            cropped,
+            dominant
+        )
+
+        candidates.append((cropped,score,strengths,weaknesses))
+
+    candidates.sort(key=lambda x:x[1],reverse=True)
+
+    # -----------------------------
+    # 후보 표시
+    # -----------------------------
+    cols = st.columns(3)
+
+    for i,(img,score,strengths,weaknesses) in enumerate(candidates):
+
+        with cols[i]:
+
+            st.image(img,use_column_width=True)
+
+            st.write("⭐",score,"점")
+
+            if strengths:
+                for s in strengths:
+                    st.write("•",s)
+
+            if weaknesses:
+                for w_ in weaknesses:
+                    st.write("•",w_)
+
+            st.download_button(
+                "⬇️ 다운로드",
+                data=image_to_bytes(img),
+                file_name=f"edited_{i}.jpg",
+                mime="image/jpeg",
+                key=f"download_{index}_{i}"
             )
-
-            score,strengths,weaknesses=evaluate_crop(
-                cropped,
-                dominant
-            )
-
-            candidates.append((cropped,score,strengths,weaknesses))
-
-        candidates.sort(key=lambda x:x[1],reverse=True)
-
-        cols=st.columns(3)
-
-        for i,(img,score,strengths,weaknesses) in enumerate(candidates):
-
-            with cols[i]:
-
-                st.image(img,use_column_width=True)
-
-                st.write(f"⭐ {score}점")
-
-                if strengths:
-                    st.write("강점")
-                    for s in strengths:
-                        st.write("•",s)
-
-                if weaknesses:
-                    st.write("보완점")
-                    for w_ in weaknesses:
-                        st.write("•",w_)
-
-                st.download_button(
-                    "⬇️ 다운로드",
-                    data=image_to_bytes(img),
-                    file_name=f"edited_{file_index}_{i}.jpg",
-                    mime="image/jpeg",
-                    key=f"download_{file_index}_{i}"
-                )
