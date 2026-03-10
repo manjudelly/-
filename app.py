@@ -5,61 +5,19 @@ import cv2
 import io
 
 st.set_page_config(layout="wide")
+st.title("📸 Smart Composition Editor")
 
-st.title("📸 Photo Composition Editor")
+# -------------------------
+# edge 기반 중심
+# -------------------------
+def get_visual_center(img):
 
-# -----------------------------
-# 선 방향 분석
-# -----------------------------
-def analyze_line_directions(image_np):
-
-    gray = cv2.cvtColor(image_np, cv2.COLOR_RGB2GRAY)
+    gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
     edges = cv2.Canny(gray,50,150)
-
-    lines = cv2.HoughLinesP(
-        edges,
-        1,
-        np.pi/180,
-        threshold=120,
-        minLineLength=100,
-        maxLineGap=10
-    )
-
-    if lines is None:
-        return 0,0,0
-
-    horizontal = vertical = diagonal = 0
-
-    for line in lines:
-        x1,y1,x2,y2 = line[0]
-        angle = abs(np.degrees(np.arctan2(y2-y1,x2-x1)))
-
-        if angle < 10:
-            horizontal += 1
-        elif 80 < angle < 100:
-            vertical += 1
-        else:
-            diagonal += 1
-
-    total = horizontal+vertical+diagonal
-
-    if total == 0:
-        return 0,0,0
-
-    return horizontal/total, vertical/total, diagonal/total
-
-
-# -----------------------------
-# 시각적 무게 중심
-# -----------------------------
-def analyze_visual_weight(image_np):
-
-    gray = cv2.cvtColor(image_np,cv2.COLOR_RGB2GRAY)
-    edges = cv2.Canny(gray,50,150)
-
-    h,w = edges.shape
 
     ys,xs = np.nonzero(edges)
+
+    h,w = edges.shape
 
     if len(xs)==0:
         return w//2,h//2
@@ -67,204 +25,145 @@ def analyze_visual_weight(image_np):
     return int(np.mean(xs)),int(np.mean(ys))
 
 
-# -----------------------------
+# -------------------------
 # 크롭
-# -----------------------------
-def crop_around_point(image,center_x,center_y,ratio):
+# -------------------------
+def crop(img,cx,cy,ratio):
 
-    h,w=image.shape[:2]
+    h,w = img.shape[:2]
 
-    box_w=int(w*ratio)
-    box_h=int(h*ratio)
+    cw = int(w*ratio)
+    ch = int(h*ratio)
 
-    x1=int(center_x-box_w/2)
-    y1=int(center_y-box_h/2)
+    x1 = int(cx-cw/2)
+    y1 = int(cy-ch/2)
 
-    x1=max(0,min(x1,w-box_w))
-    y1=max(0,min(y1,h-box_h))
+    x1=max(0,min(x1,w-cw))
+    y1=max(0,min(y1,h-ch))
 
-    return image[y1:y1+box_h,x1:x1+box_w]
+    return img[y1:y1+ch,x1:x1+cw]
 
 
-# -----------------------------
-# 후보 평가
-# -----------------------------
-def evaluate_crop(image_np,dominant):
+# -------------------------
+# 다양한 크롭 후보 생성
+# -------------------------
+def generate_candidates(img):
 
-    h,w=image_np.shape[:2]
+    h,w = img.shape[:2]
 
-    cx,cy=analyze_visual_weight(image_np)
+    cx,cy = get_visual_center(img)
+
+    candidates=[]
+
+    # Rule of thirds
+    candidates.append(crop(img,int(w/3),int(h/3),0.7))
+    candidates.append(crop(img,int(2*w/3),int(2*h/3),0.7))
+
+    # Golden ratio
+    candidates.append(crop(img,int(w*0.618),int(h*0.618),0.75))
+
+    # Diagonal
+    candidates.append(crop(img,int(w*0.75),int(h*0.25),0.7))
+
+    # Tight focus
+    candidates.append(crop(img,cx,cy,0.6))
+
+    return candidates
+
+
+# -------------------------
+# 점수 평가
+# -------------------------
+def evaluate(img):
+
+    h,w = img.shape[:2]
+
+    cx,cy = get_visual_center(img)
 
     score=100
-    strengths=[]
-    weaknesses=[]
 
-    center_dist=abs(cx-w/2)/w+abs(cy-h/2)/h
+    # 중심
+    dist = abs(cx-w/2)/w + abs(cy-h/2)/h
+    score -= dist*30
 
-    if center_dist<0.15:
-        strengths.append("시각적 중심이 안정적입니다.")
-    else:
-        score-=15
-        weaknesses.append("중심이 약간 치우쳐 있습니다.")
+    # 좌우 균형
+    left = np.sum(img[:,:w//2])
+    right = np.sum(img[:,w//2:])
+    score -= abs(left-right)/(left+right+1)*20
 
-    if dominant=="diagonal":
+    # 상하 균형
+    top = np.sum(img[:h//2,:])
+    bottom = np.sum(img[h//2:,:])
+    score -= abs(top-bottom)/(top+bottom+1)*15
 
-        _,_,d=analyze_line_directions(image_np)
-
-        if d<0.4:
-            score-=15
-            weaknesses.append("대각선 구도 성향이 약해졌습니다.")
-        else:
-            strengths.append("대각선 구도가 유지되었습니다.")
-
-    score=max(0,min(100,int(score)))
-
-    return score,strengths,weaknesses
+    return int(max(0,min(100,score)))
 
 
-# -----------------------------
-# 다운로드용
-# -----------------------------
-def image_to_bytes(img):
+# -------------------------
+# 다운로드 변환
+# -------------------------
+def img_bytes(img):
 
-    pil_img=Image.fromarray(img)
-
-    buf=io.BytesIO()
-
-    pil_img.save(buf,format="JPEG")
+    pil = Image.fromarray(img)
+    buf = io.BytesIO()
+    pil.save(buf,format="JPEG")
 
     return buf.getvalue()
 
 
-# -----------------------------
-# 사진 업로드
-# -----------------------------
-uploaded_files = st.file_uploader(
+# -------------------------
+# 업로드
+# -------------------------
+files = st.file_uploader(
     "사진 업로드",
     type=["jpg","jpeg","png"],
     accept_multiple_files=True
 )
 
-if uploaded_files:
+if files:
 
-    st.write("사진 개수:",len(uploaded_files))
-
-    # -----------------------------
-    # 사진 슬라이드
-    # -----------------------------
     index = st.slider(
         "사진 선택",
         0,
-        len(uploaded_files)-1,
+        len(files)-1,
         0
     )
 
-    file = uploaded_files[index]
+    img = Image.open(files[index]).convert("RGB")
+    img = np.array(img)
 
-    image = Image.open(file).convert("RGB")
-    image_np = np.array(image)
+    st.image(img,use_column_width=True)
 
-    st.image(image_np,use_column_width=True)
+    candidates = generate_candidates(img)
 
-    h,w = image_np.shape[:2]
+    scored=[]
 
-    # -----------------------------
-    # 분석
-    # -----------------------------
-    h_ratio,v_ratio,d_ratio = analyze_line_directions(image_np)
+    for c in candidates:
+        s = evaluate(c)
+        scored.append((c,s))
 
-    cx,cy = analyze_visual_weight(image_np)
+    # 점수 정렬
+    scored.sort(key=lambda x:x[1],reverse=True)
 
-    if d_ratio>0.45:
-        dominant="diagonal"
-    elif h_ratio>0.45:
-        dominant="horizontal"
-    elif v_ratio>0.45:
-        dominant="vertical"
-    else:
-        dominant="mixed"
+    # 상위 3개
+    scored = scored[:3]
 
-    st.write("감지된 구도:",dominant)
-
-    # -----------------------------
-    # 모드 선택
-    # -----------------------------
-    mode = st.radio(
-        "구도 모드",
-        ["🔥 구도 강화","⚖ 구도 안정화","🎨 구도 재구성"]
-    )
-
-    # -----------------------------
-    # 후보 생성
-    # -----------------------------
-    if mode=="🔥 구도 강화":
-
-        ratios=[0.85,0.75,0.65]
-        targets=[(cx,cy)]*3
-
-    elif mode=="⚖ 구도 안정화":
-
-        ratios=[0.9,0.8,0.7]
-        targets=[(w//2,h//2)]*3
-
-    else:
-
-        ratios=[0.75,0.7,0.65]
-        targets=[
-            (int(w/3),int(h/3)),
-            (int(w*2/3),int(h/3)),
-            (int(w/3),int(h*2/3))
-        ]
-
-    candidates=[]
-
-    for i in range(3):
-
-        cropped=crop_around_point(
-            image_np,
-            targets[i][0],
-            targets[i][1],
-            ratios[i]
-        )
-
-        score,strengths,weaknesses=evaluate_crop(
-            cropped,
-            dominant
-        )
-
-        candidates.append((cropped,score,strengths,weaknesses))
-
-    candidates.sort(key=lambda x:x[1],reverse=True)
-
-    # -----------------------------
-    # 결과 슬라이드 (인스타 방식)
-    # -----------------------------
     tabs = st.tabs(["후보1","후보2","후보3"])
 
     for i,tab in enumerate(tabs):
 
         with tab:
 
-            img,score,strengths,weaknesses=candidates[i]
+            im,sc = scored[i]
 
-            st.image(img,use_column_width=True)
+            st.image(im,use_column_width=True)
 
-            st.write("⭐",score,"점")
-
-            if strengths:
-                st.write("강점")
-                for s in strengths:
-                    st.write("•",s)
-
-            if weaknesses:
-                st.write("보완점")
-                for w_ in weaknesses:
-                    st.write("•",w_)
+            st.write("⭐",sc,"점")
 
             st.download_button(
                 "⬇️ 다운로드",
-                data=image_to_bytes(img),
-                file_name=f"edited_{i}.jpg",
+                data=img_bytes(im),
+                file_name=f"crop_{i}.jpg",
                 mime="image/jpeg",
-                key=f"download_{index}_{i}"
+                key=f"d{i}"
             )
